@@ -1,4 +1,4 @@
-const pool = require('../../config/dbConfig'); // PostgreSQL connection
+const pool = require('../../config/dbconfig'); // PostgreSQL connection
 
 exports.checkConnectionStatus = async (req, res) => {
     try {

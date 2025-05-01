@@ -1,4 +1,4 @@
-const pool = require('../../config/dbConfig'); // PostgreSQL connection
+const pool = require('../../config/dbconfig'); // PostgreSQL connection
 const crypto = require("crypto");
 
 const algorithm = "aes-256-cbc";

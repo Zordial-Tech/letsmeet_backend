@@ -1,5 +1,5 @@
 const Connection = require('../../models/connection.js');
-const pool = require('../../config/dbConfig.js'); // PostgreSQL connection
+const pool = require('../../config/dbconfig'); // PostgreSQL connection
 
 exports.sendConnectionRequest = async (req, res) => {
   try {
