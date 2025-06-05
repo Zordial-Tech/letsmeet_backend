@@ -248,6 +248,11 @@ exports.getUserCount = async (req, res) => {
                 u.id AS user_id,
                 u.first_name,
                 u.last_name,
+                u.linkedin_url,
+                u.email,
+                u.photo,
+                u.preference,
+                u.attendees_role,
                 COUNT(DISTINCT ea.event_id) AS total_attended_events,
                 COUNT(DISTINCT CASE WHEN uc.status IN ('approved', 'requested', 'pending') THEN uc.id END) AS total_connections
             FROM users u
