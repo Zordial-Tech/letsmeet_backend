@@ -1,9 +1,9 @@
 const express = require('express');
 const { generateQRCode } = require('../../controllers/Admin/qrController');
-const { verifyToken } = require('../../middleware/auth');
+const adminAuth = require('../../middleware/adminAuth');
 
 const router = express.Router();
 
-router.post('/generate', verifyToken, generateQRCode);
+router.post('/generate',adminAuth.verifyToken,  generateQRCode);
 
 module.exports = router;

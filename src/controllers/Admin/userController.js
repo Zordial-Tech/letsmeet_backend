@@ -1,33 +1,7 @@
 const pool = require('../../config/dbconfig'); // PostgreSQL connection
 const crypto = require("crypto");
+const { encryptPassword, decryptPassword } = require('../../utils/cryptoHelper');
 
-const algorithm = "aes-256-cbc";
-const userSecretKey = "yourCustomSecretKey!123"; // Can be any length
-const secretKey = crypto.createHash("sha256").update(userSecretKey).digest("base64").substring(0, 32); // Fixed 32-byte key
-
-// Encrypt Password
-const encryptPassword = (password) => {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(algorithm, Buffer.from(secretKey, "utf8"), iv);
-    let encrypted = cipher.update(password, "utf8", "hex");
-    encrypted += cipher.final("hex");
-    return iv.toString("hex") + encrypted; // Store IV with encrypted data
-};
-
-// Decrypt Password
-const decryptPassword = (encryptedPassword) => {
-    try {
-        const iv = Buffer.from(encryptedPassword.substring(0, 32), "hex"); // Extract IV
-        const encryptedData = encryptedPassword.substring(32); // Extract encrypted data
-        const decipher = crypto.createDecipheriv(algorithm, Buffer.from(secretKey, "utf8"), iv);
-        let decrypted = decipher.update(encryptedData, "hex", "utf8");
-        decrypted += decipher.final("utf8");
-        return decrypted;
-    } catch (error) {
-        console.error("Decryption Failed:", error.message);
-        return "Decryption Error";
-    }
-};
 
 // Create a new user
 exports.createUser = async (req, res) => {
@@ -88,47 +62,111 @@ exports.getUserById = async (req, res) => {
 exports.updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const { first_name, middle_name, last_name, username, email, password, role_id, attendees_role, photo, linkedin_url } = req.body;
+        let { first_name, middle_name, last_name, username, email, password, role_id, attendees_role, photo, linkedin_url } = req.body;
 
+        // Normalize empty strings
+        if (linkedin_url === "") linkedin_url = null;
+        if (photo === "") photo = null;
+        if (username === "") username = null;
+        if (middle_name === "") middle_name = null;
+
+        // Step 1: Check if the linkedin_url is used by another user (case-insensitive)
+        if (linkedin_url) {
+            const linkedinCheck = await pool.query(
+                `SELECT id FROM Users WHERE LOWER(linkedin_url) = LOWER($1) AND id != $2`,
+                [linkedin_url, id]
+            );
+
+            if (linkedinCheck.rows.length > 0) {
+                return res.status(400).json({ error: "LinkedIn URL already used by another user." });
+            }
+        }
+
+        // Step 2: Encrypt password if provided
         let encryptedPassword = null;
         if (password) {
             encryptedPassword = encryptPassword(password);
         }
 
+        // Step 3: Update user
         const result = await pool.query(
             `UPDATE Users 
-             SET first_name = $1, middle_name = $2, last_name = $3, username = $4, email = $5, password_hash = COALESCE($6, password_hash), 
+             SET first_name = $1, middle_name = $2, last_name = $3, username = $4, email = $5, 
+                 password_hash = COALESCE($6, password_hash), 
                  role_id = $7, attendees_role = $8, linkedin_url = $9, photo = $10, updated_at = NOW() 
              WHERE id = $11 RETURNING *`,
-            [first_name, middle_name || null, last_name, username || null, email, encryptedPassword, role_id, attendees_role, linkedin_url, photo || null, id]
+            [
+                first_name,
+                middle_name,
+                last_name,
+                username,
+                email,
+                encryptedPassword,
+                role_id,
+                attendees_role,
+                linkedin_url,
+                photo,
+                id
+            ]
         );
 
-        if (result.rows.length === 0) return res.status(404).json({ message: "User not found" });
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
 
         let user = result.rows[0];
-        user.password_hash = decryptPassword(user.password_hash); // Decrypt before sending
+
+        if (encryptedPassword) {
+            user.password_hash = decryptPassword(user.password_hash);
+        }
 
         res.json(user);
+
     } catch (error) {
         console.error("ERROR:", error.message);
         res.status(500).json({ error: "Error updating user" });
     }
 };
 
+
 // Delete user
 exports.deleteUser = async (req, res) => {
+    const { id } = req.params;
+
+    // Optional: Validate ID
+    if (!id || isNaN(parseInt(id))) {
+        return res.status(400).json({ error: "Invalid user ID" });
+    }
+
     try {
-        const { id } = req.params;
-        const result = await pool.query('DELETE FROM Users WHERE id = $1 RETURNING *', [id]);
+        await pool.query('BEGIN');
 
-        if (result.rows.length === 0) return res.status(404).json({ message: "User not found" });
+        // Delete related entries
+        await pool.query(`DELETE FROM public.eventattendees WHERE user_id = $1`, [id]);
+        await pool.query(`DELETE FROM eventregistrations WHERE user_id = $1`, [id]);
+        await pool.query(`DELETE FROM reports WHERE reported_by = $1 OR reported_user = $1`, [id]);
+        await pool.query(`DELETE FROM userconnections WHERE user1_id = $1 OR user2_id = $1`, [id]);
+        await pool.query(`DELETE FROM qrcodes WHERE user_id = $1`, [id]);
+        await pool.query(`DELETE FROM adminlogs WHERE admin_id = $1`, [id]);
 
-        res.json({ message: "User deleted successfully" });
+        // Delete user
+        const result = await pool.query(`DELETE FROM users WHERE id = $1 RETURNING *`, [id]);
+
+        await pool.query('COMMIT');
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.json({ message: "User deleted successfully", deletedUser: result.rows[0] });
+
     } catch (error) {
-        console.error("ERROR:", error.message);
-        res.status(500).json({ error: "Error deleting user" });
+        await pool.query('ROLLBACK');
+        console.error("Delete User Error:", error.message);
+        res.status(500).json({ error: error.message });
     }
 };
+
 
 // Get all users
 exports.getAllUsers = async (req, res) => {
@@ -163,7 +201,7 @@ exports.getUserCount = async (req, res) => {
             return res.status(400).json({ error: "Invalid year parameter. Use 'current' or 'previous'." });
         }
 
-        // ✅ Query to get user count per month
+        //Query to get user count per month
         const result = await pool.query(
             `SELECT 
                 CAST(EXTRACT(MONTH FROM created_at) AS INTEGER) AS month,
@@ -263,39 +301,53 @@ exports.getUserConnectionsInAttendedEvents = async (req, res) => {
 
 exports.getUserEventConnections = async (req, res) => {
     try {
-        const { userId, eventId } = req.params;
-
-        // Fetch user connections in a specific event
-        const result = await pool.query(
-            `SELECT 
-                u.id AS user_id,
-                u.first_name,
-                u.last_name,
-                ur.role_name AS role,
-                uc.status,
-                TO_CHAR(uc.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at
-            FROM userconnections uc
-            JOIN users u ON (uc.user1_id = u.id OR uc.user2_id = u.id)
-            LEFT JOIN userroles ur ON u.role_id = ur.id
-            WHERE (uc.user1_id = $1 OR uc.user2_id = $1)
-            AND u.id != $1
-            AND uc.created_at >= (SELECT start_date_time FROM events WHERE id = $2)
-            AND uc.created_at <= (SELECT end_date_time FROM events WHERE id = $2)
-            ORDER BY uc.created_at DESC`,
-            [userId, eventId]
-        );
-
-        res.json({
-            user_id: userId,
-            event_id: eventId,
-            connections: result.rows
-        });
-
+      const { userId, eventId } = req.params;
+  
+      // Step 1: Get event's start and end date
+      const eventResult = await pool.query(
+        `SELECT start_date_time, end_date_time FROM events WHERE id = $1`,
+        [eventId]
+      );
+  
+      if (eventResult.rowCount === 0) {
+        return res.status(404).json({ error: 'Event not found.' });
+      }
+  
+      const { start_date_time, end_date_time } = eventResult.rows[0];
+  
+      // Step 2: Fetch user connections in that time frame
+      const result = await pool.query(
+        `SELECT 
+            u.id AS user_id,
+            u.first_name,
+            u.last_name,
+            ur.role_name AS role,
+            uc.status,
+            TO_CHAR(uc.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at
+          FROM userconnections uc
+          JOIN users u 
+              ON (
+                  (uc.user1_id = $1 AND uc.user2_id = u.id) OR 
+                  (uc.user2_id = $1 AND uc.user1_id = u.id)
+              )
+          LEFT JOIN userroles ur ON u.role_id = ur.id
+          WHERE uc.created_at BETWEEN $2 AND $3
+          ORDER BY uc.created_at DESC`,
+        [userId, start_date_time, end_date_time]
+      );
+  
+      res.json({
+        user_id: userId,
+        event_id: eventId,
+        connections: result.rows,
+      });
+  
     } catch (error) {
-        console.error("Database error:", error);
-        res.status(500).json({ error: "Internal server error", details: error.message });
+      console.error("Database error:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
     }
-};
+  };
+  
 
 exports.getAllUsersblcokedStatus = async (req, res) => {
     try {
@@ -305,13 +357,13 @@ exports.getAllUsersblcokedStatus = async (req, res) => {
                     block_status 
              FROM users;`
         );
-
         res.json({ message: "Users fetched successfully.", users: rows });
     } catch (error) {
         console.error("Database error:", error);
         res.status(500).json({ error: "Internal server error", details: error.message });
     }
 };
+
 
 exports.setUserBlockStatus = async (req, res) => {
     try {
@@ -338,6 +390,8 @@ exports.setUserBlockStatus = async (req, res) => {
         res.status(500).json({ error: "Internal server error", details: error.message });
     }
 };
+
+
 exports.getAttendedEventsByUser = async (req, res) => {
   const { userId } = req.params;
 
@@ -352,8 +406,8 @@ exports.getAttendedEventsByUser = async (req, res) => {
     const events = await pool.query(
       `SELECT 
          e.id, 
-         e.name_text, 
-         e.description_text, 
+         e.name, 
+         e.description, 
          e.start_date_time, 
          e.end_date_time, 
          e.status
@@ -376,25 +430,224 @@ exports.getAttendedEventsByUser = async (req, res) => {
 
 
 
-exports.getAttendedEventsByUser = async (req, res) => {
-  const userId = parseInt(req.query.userId);
+// exports.getAttendedEventsByUser = async (req, res) => {
+//   const userId = parseInt(req.query.userId);
 
-  if (!userId) {
-    return res.status(400).json({ error: 'Missing or invalid userId' });
+//   if (!userId) {
+//     return res.status(400).json({ error: 'Missing or invalid userId' });
+//   }
+
+//   try {
+//     const result = await pool.query(
+//       `SELECT e.*
+//        FROM events e
+//        JOIN eventattendees ea ON e.id = ea.event_id
+//        WHERE ea.user_id = $1`,
+//       [userId]
+//     );
+
+//     res.status(200).json({ events: result.rows });
+//   } catch (err) {
+//     console.error('Error fetching events:', err);
+//     res.status(500).json({ error: 'Error fetching events' });
+//   }
+// };
+
+
+
+// userController.js
+
+exports.deleteUsers = async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const { ids } = req.body;
+  
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "Please provide an array of user IDs to delete." });
+      }
+  
+      // Begin transaction
+      await client.query('BEGIN');
+  
+      // Delete from dependent tables - note explicit schema public.*
+      await client.query(`DELETE FROM public.eventattendees WHERE user_id = ANY($1)`, [ids]);
+      await client.query(`DELETE FROM public.eventregistrations WHERE user_id = ANY($1)`, [ids]);
+    //   await client.query(`DELETE FROM public.aiconnections WHERE user_id = ANY($1) OR recommended_user_id = ANY($1)`, [ids]);
+      await client.query(`DELETE FROM public.reports WHERE reported_by = ANY($1) OR reported_user = ANY($1)`, [ids]);
+      await client.query(`DELETE FROM public.userconnections WHERE user1_id = ANY($1) OR user2_id = ANY($1)`, [ids]);
+      await client.query(`DELETE FROM public.adminlogs WHERE admin_id = ANY($1)`, [ids]);
+  
+      // Delete users themselves
+      const deleteResult = await client.query(`DELETE FROM public.users WHERE id = ANY($1) RETURNING id`, [ids]);
+  
+      await client.query('COMMIT');
+  
+      if (deleteResult.rowCount === 0) {
+        return res.status(404).json({ message: "No users found with the provided IDs." });
+      }
+  
+      res.json({ message: `Deleted ${deleteResult.rowCount} user(s) successfully.`, deletedUserIds: deleteResult.rows.map(r => r.id) });
+  
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error("Delete Users Error:", error);
+      res.status(500).json({ error: "Error deleting users" });
+    } finally {
+      client.release();
+    }
+  };
+  
+
+// attedndee-role-list
+
+exports.getAllAttendeeRoles = async (req, res) => {
+    try {
+      const { rows } = await pool.query('SELECT id, role_name FROM attendeesrolelist ORDER BY id ASC;');
+      res.json({ message: "Roles fetched successfully.", roles: rows });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+  };
+  
+  
+  
+  
+  
+
+// ADD a new role
+exports.addAttendeeRole = async (req, res) => {
+  const { role_name } = req.body;
+
+  if (!role_name) {
+    return res.status(400).json({ error: "Role name is required" });
   }
 
   try {
-    const result = await pool.query(
-      `SELECT e.*
-       FROM events e
-       JOIN eventattendees ea ON e.id = ea.event_id
-       WHERE ea.user_id = $1`,
-      [userId]
+    // Step 1: Find the smallest missing ID
+    const gapResult = await pool.query(`
+      SELECT COALESCE(MIN(t1.id) + 1, 1) AS available_id
+      FROM attendeesrolelist t1
+      WHERE NOT EXISTS (
+        SELECT 1 FROM attendeesrolelist t2 WHERE t2.id = t1.id + 1
+      )
+    `);
+
+    let availableId = gapResult.rows[0].available_id;
+
+    // Step 2: Check if 1 is missing (edge case when table starts empty or 1 is deleted)
+    const checkOne = await pool.query(`SELECT 1 FROM attendeesrolelist WHERE id = 1`);
+    if (checkOne.rows.length === 0) {
+      availableId = 1;
+    }
+
+    // Step 3: Insert using the manually set ID
+    const { rows } = await pool.query(
+      `INSERT INTO attendeesrolelist (id, role_name) VALUES ($1, $2) RETURNING id AS role_id`,
+      [availableId, role_name]
     );
 
-    res.status(200).json({ events: result.rows });
-  } catch (err) {
-    console.error('Error fetching events:', err);
-    res.status(500).json({ error: 'Error fetching events' });
+    res.status(201).json({ message: "Role added successfully.", role: rows[0] });
+
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: "Role name or ID already exists." });
+    }
+
+    console.error("Database error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
 };
+
+
+// EDIT role if not assigned
+exports.editAttendeeRole = async (req, res) => {
+    const roleId = req.params.id;
+    const { role_name } = req.body;
+
+    if (!role_name) {
+        return res.status(400).json({ error: "Role name is required" });
+    }
+
+    try {
+        const inUse = await pool.query(
+            `SELECT 1 FROM users WHERE id = $1 LIMIT 1;`,
+            [roleId]
+        );
+
+        if (inUse.rowCount > 0) {
+            return res.status(400).json({ error: "Cannot edit role. It is currently assigned to users." });
+        }
+
+        await pool.query(
+            `UPDATE attendeesrolelist SET role_name = $1 WHERE id = $2;`,
+            [role_name, roleId]
+        );
+
+        res.json({ message: "Role updated successfully." });
+    } catch (error) {
+        console.error("Database error:", error);
+        res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+};
+
+// DELETE role if not assigned
+exports.deleteAttendeeRole = async (req, res) => {
+    const roleId = req.params.id;
+
+    try {
+        const inUse = await pool.query(
+            `SELECT 1 FROM users WHERE id = $1 LIMIT 1;`,
+            [roleId]
+        );
+
+        if (inUse.rowCount > 0) {
+            return res.status(400).json({ error: "Cannot delete role. It is currently assigned to users." });
+        }
+
+        await pool.query(
+            `DELETE FROM attendeesrolelist WHERE id = $1;`,
+            [roleId]
+        );
+
+        res.json({ message: "Role deleted successfully." });
+    } catch (error) {
+        console.error("Database error:", error);
+        res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+};
+
+exports.updateUserStatus = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+  
+      const allowedStatuses = ['active', 'inactive', 'banned'];
+  
+      if (!status) {
+        return res.status(400).json({ error: 'Status is required' });
+      }
+  
+      if (!allowedStatuses.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Allowed values: ${allowedStatuses.join(', ')}` });
+      }
+  
+      const result = await pool.query(
+        `UPDATE users SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, first_name, last_name, status`,
+        [status, id]
+      );
+  
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+  
+      res.status(200).json({
+        message: `User status updated to ${status}`,
+        user: result.rows[0]
+      });
+    } catch (error) {
+      console.error("Update User Status Error:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+  };
+  

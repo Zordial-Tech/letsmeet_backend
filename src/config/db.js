@@ -1,26 +1,27 @@
 // const { Sequelize } = require('sequelize');
-// require('dotenv').config(); // Load environment variables
+// require('dotenv').config(); 
 
-// // Create Sequelize instance
 // const sequelize = new Sequelize(
-//   process.env.DB_NAME,     // Database Name
-//   process.env.DB_USER,     // Database User
-//   process.env.DB_PASSWORD, // Database Password
+//   process.env.DB_NAME,  
+//   process.env.DB_USER,    
+//   process.env.DB_PASSWORD,
 //   {
-//     host: process.env.DB_HOST, // Database Host
-//     dialect: 'postgres',       // Using PostgreSQL
-//     port: process.env.DB_PORT || 5432, // Default PostgreSQL Port
-//     logging: false, // Disable logging (optional)
+//     host: process.env.DB_HOST,
+//     dialect: 'postgres',   
+//     port: process.env.DB_PORT || 5432, 
+//     logging: false, 
 //   }
 // );
 
-// // Test database connection
 // sequelize
 //   .authenticate()
-//   .then(() => console.log('✅ Database connected successfully...'))
-//   .catch(err => console.error('❌ Database connection error:', err.message));
+//   .then(() => console.log('Database connected successfully...'))
+//   .catch(err => console.error('Database connection error:', err.message));
 
 // module.exports = sequelize;
+
+
+
 
 const { Sequelize } = require('sequelize');
 require('dotenv').config(); // Load environment variables
@@ -41,7 +42,7 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
 // Test database connection
 sequelize
   .authenticate()
-  .then(() => console.log('✅ Database connected successfully...'))
+  .then(() => console.log('Database connected successfully...'))
   .catch(err => console.error('❌ Database connection error:', err.message));
 
 module.exports = sequelize;

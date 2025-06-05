@@ -57,6 +57,10 @@ module.exports = (sequelize, DataTypes) => {
           type: DataTypes.ENUM("active", "inactive"),
           defaultValue: "active"
       },
+      block_status: {
+          type: DataTypes.ENUM("blocked", "unblocked"),
+          defaultValue: "unblocked"
+      },
       created_at: {
           type: DataTypes.DATE,
           defaultValue: DataTypes.NOW

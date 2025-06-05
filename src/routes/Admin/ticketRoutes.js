@@ -1,11 +1,11 @@
 const express = require('express');
 const { bookTicket, cancelTicket, getUserTickets } = require('../../controllers/Admin/ticketController.js');
-const { verifyToken } = require('../../middleware/auth.js');
+const adminAuth = require('../../middleware/adminAuth');
 
 const router = express.Router();
 
-router.post('/book', verifyToken, bookTicket);
-router.delete('/cancel/:ticketId', verifyToken, cancelTicket);
-router.get('/my-tickets', verifyToken, getUserTickets);
+router.post('/book',adminAuth.verifyToken, bookTicket);
+router.delete('/cancel/:ticketId',adminAuth.verifyToken, cancelTicket);
+router.get('/my-tickets',adminAuth.verifyToken, getUserTickets);
 
 module.exports = router;
