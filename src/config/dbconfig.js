@@ -11,12 +11,12 @@
 // module.exports = pool;
 
 const { Pool } = require('pg');
-require('dotenv').config(); // Load environment variables
+require('dotenv').config();
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false, // Required for some services like Neon
+    rejectUnauthorized: false,
   },
 });
 

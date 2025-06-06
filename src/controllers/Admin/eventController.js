@@ -333,25 +333,39 @@ exports.getEventCount = async (req, res) => {
     }
   };
   
-exports.eventConnectionList = async (req, res) => {
+  exports.eventConnectionList = async (req, res) => {
     try {
-        const { rows } = await pool.query(
-            `SELECT 
-                e.id AS event_id,
-                e.name AS event_name,
-                COUNT(uc.id) AS total_connections
-            FROM events e
-            LEFT JOIN eventattendees ea ON e.id = ea.event_id
-            LEFT JOIN userconnections uc ON ea.user_id IN (uc.user1_id, uc.user2_id)
-            GROUP BY e.id, e.name;`
-        );
-
-        res.json({ message: "Event connections fetched successfully.", events: rows });
+      const { rows } = await pool.query(`
+        SELECT
+        e.id AS event_id,
+        e.name AS event_name,
+        COUNT(DISTINCT LEAST(uc.user1_id, uc.user2_id) || '-' || GREATEST(uc.user1_id, uc.user2_id)) AS total_connections
+      FROM events e
+      LEFT JOIN eventattendees ea1 ON ea1.event_id = e.id
+      LEFT JOIN eventattendees ea2 ON ea2.event_id = e.id AND ea2.user_id != ea1.user_id
+      LEFT JOIN userconnections uc 
+        ON (
+          (uc.user1_id = ea1.user_id AND uc.user2_id = ea2.user_id) OR
+          (uc.user1_id = ea2.user_id AND uc.user2_id = ea1.user_id)
+        )
+        AND uc.status = 'approved'
+      GROUP BY e.id, e.name
+      ORDER BY e.start_date_time ASC;
+      `);
+  
+      res.json({
+        message: "Event connections fetched successfully.",
+        events: rows
+      });
     } catch (error) {
-        console.error("Database error:", error);
-        res.status(500).json({ error: "Internal server error", details: error.message });
+      console.error("Database error:", error);
+      res.status(500).json({
+        error: "Internal server error",
+        details: error.message
+      });
     }
-};
+  };
+  
 
 exports.deleteMassEvents = async (req, res) => {
     const client = await pool.connect();

@@ -305,53 +305,52 @@ exports.getUserConnectionsInAttendedEvents = async (req, res) => {
 };
 
 exports.getUserEventConnections = async (req, res) => {
-    try {
-      const { userId, eventId } = req.params;
-  
-      // Step 1: Get event's start and end date
-      const eventResult = await pool.query(
-        `SELECT start_date_time, end_date_time FROM events WHERE id = $1`,
-        [eventId]
-      );
-  
-      if (eventResult.rowCount === 0) {
-        return res.status(404).json({ error: 'Event not found.' });
-      }
-  
-      const { start_date_time, end_date_time } = eventResult.rows[0];
-  
-      // Step 2: Fetch user connections in that time frame
-      const result = await pool.query(
-        `SELECT 
-            u.id AS user_id,
-            u.first_name,
-            u.last_name,
-            ur.role_name AS role,
-            uc.status,
-            TO_CHAR(uc.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at
-          FROM userconnections uc
-          JOIN users u 
-              ON (
-                  (uc.user1_id = $1 AND uc.user2_id = u.id) OR 
-                  (uc.user2_id = $1 AND uc.user1_id = u.id)
-              )
-          LEFT JOIN userroles ur ON u.role_id = ur.id
-          WHERE uc.created_at BETWEEN $2 AND $3
-          ORDER BY uc.created_at DESC`,
-        [userId, start_date_time, end_date_time]
-      );
-  
-      res.json({
-        user_id: userId,
-        event_id: eventId,
-        connections: result.rows,
-      });
-  
-    } catch (error) {
-      console.error("Database error:", error);
-      res.status(500).json({ error: "Internal server error", details: error.message });
-    }
-  };
+  try {
+    const { userId, eventId } = req.params;
+
+    const query = `
+      SELECT 
+        u.id AS user_id,
+        u.first_name,
+        u.last_name,
+        ur.role_name AS role,
+        uc.status,
+        TO_CHAR(uc.created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at
+      FROM userconnections uc
+      JOIN users u 
+        ON (
+          (uc.user1_id = $1 AND uc.user2_id = u.id) OR 
+          (uc.user2_id = $1 AND uc.user1_id = u.id)
+        )
+      LEFT JOIN userroles ur ON u.role_id = ur.id
+      WHERE (
+        EXISTS (
+          SELECT 1 FROM eventattendees ea1
+          WHERE ea1.user_id = uc.user1_id AND ea1.event_id = $2
+        )
+        AND
+        EXISTS (
+          SELECT 1 FROM eventattendees ea2
+          WHERE ea2.user_id = uc.user2_id AND ea2.event_id = $2
+        )
+      )
+      ORDER BY uc.created_at DESC
+    `;
+
+    const result = await pool.query(query, [userId, eventId]);
+
+    res.json({
+      user_id: userId,
+      event_id: eventId,
+      connections: result.rows,
+    });
+
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+};
+
   
 
 exports.getAllUsersblcokedStatus = async (req, res) => {
@@ -432,32 +431,6 @@ exports.getAttendedEventsByUser = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
-
-
-
-// exports.getAttendedEventsByUser = async (req, res) => {
-//   const userId = parseInt(req.query.userId);
-
-//   if (!userId) {
-//     return res.status(400).json({ error: 'Missing or invalid userId' });
-//   }
-
-//   try {
-//     const result = await pool.query(
-//       `SELECT e.*
-//        FROM events e
-//        JOIN eventattendees ea ON e.id = ea.event_id
-//        WHERE ea.user_id = $1`,
-//       [userId]
-//     );
-
-//     res.status(200).json({ events: result.rows });
-//   } catch (err) {
-//     console.error('Error fetching events:', err);
-//     res.status(500).json({ error: 'Error fetching events' });
-//   }
-// };
-
 
 
 // userController.js
