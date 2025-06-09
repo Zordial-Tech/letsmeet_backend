@@ -3,7 +3,7 @@ const pool = require('../../config/dbconfig');
 exports.getReports = async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM reports");
-    const reports = result.rows;  // PostgreSQL query results are in `rows`
+    const reports = result.rows;
 
     res.status(200).json({ reports });
   } catch (error) {

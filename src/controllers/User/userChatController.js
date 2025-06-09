@@ -63,99 +63,99 @@ exports.getApprovedConnectionsWithLastMessage = async (req, res) => {
   };
   
 
-  exports.getChatWithUser = async (req, res) => {
-    const userId = req.user.id;
-    const peer_id = parseInt(req.params.peer_id);
+  // exports.getChatWithUser = async (req, res) => {
+  //   const userId = req.user.id;
+  //   const peer_id = parseInt(req.params.peer_id);
   
-    if (userId === peer_id) {
-      return res.status(400).json({ message: "Cannot fetch chat with yourself." });
-    }
+  //   if (userId === peer_id) {
+  //     return res.status(400).json({ message: "Cannot fetch chat with yourself." });
+  //   }
   
-    try {
-      const chatResult = await pool.query(`
-        SELECT id FROM chats
-        WHERE (user1_id = $1 AND user2_id = $2) OR (user1_id = $2 AND user2_id = $1)
-      `, [userId, peer_id]);
+  //   try {
+  //     const chatResult = await pool.query(`
+  //       SELECT id FROM chats
+  //       WHERE (user1_id = $1 AND user2_id = $2) OR (user1_id = $2 AND user2_id = $1)
+  //     `, [userId, peer_id]);
   
-      if (chatResult.rowCount === 0) {
-        return res.status(404).json({ message: "Chat not found" });
-      }
+  //     if (chatResult.rowCount === 0) {
+  //       return res.status(404).json({ message: "Chat not found" });
+  //     }
   
-      const chatId = chatResult.rows[0].id;
+  //     const chatId = chatResult.rows[0].id;
   
-      const messages = await pool.query(`
-        SELECT sender_id, content, sent_at
-        FROM messages
-        WHERE chat_id = $1
-        ORDER BY sent_at ASC
-      `, [chatId]);
+  //     const messages = await pool.query(`
+  //       SELECT sender_id, content, sent_at
+  //       FROM messages
+  //       WHERE chat_id = $1
+  //       ORDER BY sent_at ASC
+  //     `, [chatId]);
   
-      res.status(200).json({ chat_id: chatId, messages: messages.rows });
-    } catch (err) {
-      console.error("Error fetching chat:", err);
-      res.status(500).json({ message: "Server error" });
-    }
-  };
+  //     res.status(200).json({ chat_id: chatId, messages: messages.rows });
+  //   } catch (err) {
+  //     console.error("Error fetching chat:", err);
+  //     res.status(500).json({ message: "Server error" });
+  //   }
+  // };
   
 
-  exports.sendMessageToUser = async (req, res) => {
-    const senderId = req.user.id;
-    const peer_id = parseInt(req.params.peer_id);
-    const { content } = req.body;
+  // exports.sendMessageToUser = async (req, res) => {
+  //   const senderId = req.user.id;
+  //   const peer_id = parseInt(req.params.peer_id);
+  //   const { content } = req.body;
   
-    if (!content || content.trim() === "") {
-      return res.status(400).json({ message: "Message content cannot be empty." });
-    }
+  //   if (!content || content.trim() === "") {
+  //     return res.status(400).json({ message: "Message content cannot be empty." });
+  //   }
   
-    if (senderId === peer_id) {
-      return res.status(400).json({ message: "You cannot send messages to yourself." });
-    }
+  //   if (senderId === peer_id) {
+  //     return res.status(400).json({ message: "You cannot send messages to yourself." });
+  //   }
   
-    try {
-      // 1. Find or create chat between users
-      let chatResult = await pool.query(`
-        SELECT id FROM chats
-        WHERE (user1_id = $1 AND user2_id = $2) OR (user1_id = $2 AND user2_id = $1)
-      `, [senderId, peer_id]);
+  //   try {
+  //     // 1. Find or create chat between users
+  //     let chatResult = await pool.query(`
+  //       SELECT id FROM chats
+  //       WHERE (user1_id = $1 AND user2_id = $2) OR (user1_id = $2 AND user2_id = $1)
+  //     `, [senderId, peer_id]);
   
-      let chatId;
+  //     let chatId;
   
-      if (chatResult.rowCount === 0) {
-        // Create chat if not found
-        const newChat = await pool.query(`
-          INSERT INTO chats (user1_id, user2_id)
-          VALUES ($1, $2)
-          RETURNING id
-        `, [senderId, peer_id]);
+  //     if (chatResult.rowCount === 0) {
+  //       // Create chat if not found
+  //       const newChat = await pool.query(`
+  //         INSERT INTO chats (user1_id, user2_id)
+  //         VALUES ($1, $2)
+  //         RETURNING id
+  //       `, [senderId, peer_id]);
   
-        chatId = newChat.rows[0].id;
-      } else {
-        chatId = chatResult.rows[0].id;
-      }
+  //       chatId = newChat.rows[0].id;
+  //     } else {
+  //       chatId = chatResult.rows[0].id;
+  //     }
   
-      // 2. Insert the new message
-      const messageResult = await pool.query(`
-        INSERT INTO messages (chat_id, sender_id, content, sent_at)
-        VALUES ($1, $2, $3, NOW())
-        RETURNING id, sender_id, content, sent_at
-      `, [chatId, senderId, content]);
+  //     // 2. Insert the new message
+  //     const messageResult = await pool.query(`
+  //       INSERT INTO messages (chat_id, sender_id, content, sent_at)
+  //       VALUES ($1, $2, $3, NOW())
+  //       RETURNING id, sender_id, content, sent_at
+  //     `, [chatId, senderId, content]);
   
-      const message = messageResult.rows[0];
+  //     const message = messageResult.rows[0];
   
-      res.status(201).json({
-        chat_id: chatId,
-        message: {
-          id: message.id,
-          sender_id: message.sender_id,
-          content: message.content,
-          sent_at: message.sent_at
-        }
-      });
-    } catch (err) {
-      console.error("Error sending message:", err);
-      res.status(500).json({ message: "Internal server error." });
-    }
-  };
+  //     res.status(201).json({
+  //       chat_id: chatId,
+  //       message: {
+  //         id: message.id,
+  //         sender_id: message.sender_id,
+  //         content: message.content,
+  //         sent_at: message.sent_at
+  //       }
+  //     });
+  //   } catch (err) {
+  //     console.error("Error sending message:", err);
+  //     res.status(500).json({ message: "Internal server error." });
+  //   }
+  // };
 
  exports.deleteChat = async (req, res) => {
     const userId = req.user.id;

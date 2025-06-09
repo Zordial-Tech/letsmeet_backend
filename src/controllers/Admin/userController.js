@@ -3,7 +3,6 @@ const crypto = require("crypto");
 const { encryptPassword, decryptPassword } = require('../../utils/cryptoHelper');
 
 
-// Create a new user
 exports.createUser = async (req, res) => {
     try {
         const { first_name, middle_name, last_name, username, email, password, role_id, attendees_role, photo, linkedin_url } = req.body;
