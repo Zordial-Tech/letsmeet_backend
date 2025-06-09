@@ -8,52 +8,64 @@ const { haversineDistance } = require('../../utils/location');
 
 
 exports.getAllUpcomingEvents = async (req, res) => {
-    try {
-      const userId = req.user.id;
-      const { latitude, longitude } = req.body;
-  
-      const settingResult = await pool.query(`SELECT check_in_distance FROM settings LIMIT 1`);
-      const checkInDistance = settingResult.rows[0]?.check_in_distance || 100; // fallback: 100 meters
-  
-      const eventsQuery = `
-        SELECT 
-          e.*,
-          EXISTS (
-            SELECT 1 FROM eventregistrations ea 
-            WHERE ea.event_id = e.id AND ea.user_id = $1
-          ) AS is_registered
-        FROM events e
-        WHERE e.start_date_time > NOW()
-        ORDER BY e.start_date_time ASC
-      `;
-      const result = await pool.query(eventsQuery, [userId]);
-      const events = result.rows;
-  
-      const enrichedEvents = events.map(event => {
-        const registered = event.is_registered;
-        let checkInAvailable = false;
-  
-        if (registered && latitude && longitude && event.latitude && event.longitude) {
-          const distance = haversineDistance(latitude, longitude, event.latitude, event.longitude);
-          if (distance <= checkInDistance) {
-            checkInAvailable = true;
-          }
+  try {
+    const userId = req.user.id;
+    const { latitude, longitude } = req.body;
+
+    const settingResult = await pool.query(`SELECT check_in_distance FROM settings LIMIT 1`);
+    const checkInDistance = settingResult.rows[0]?.check_in_distance || 100; // fallback: 100 meters
+
+    const eventsQuery = `
+      SELECT 
+        e.*,
+        EXISTS (
+          SELECT 1 FROM eventregistrations ea 
+          WHERE ea.event_id = e.id AND ea.user_id = $1
+        ) AS is_registered
+      FROM events e
+      WHERE e.end_date_time > NOW()
+      ORDER BY e.start_date_time ASC
+    `;
+
+    const result = await pool.query(eventsQuery, [userId]);
+    const events = result.rows;
+
+    const enrichedEvents = events.map(event => {
+      const registered = event.is_registered;
+      let checkInAvailable = false;
+
+      if (
+        registered &&
+        latitude &&
+        longitude &&
+        event.latitude &&
+        event.longitude
+      ) {
+        const distance = haversineDistance(latitude, longitude, event.latitude, event.longitude);
+
+        const now = new Date();
+        const start = new Date(event.start_date_time);
+        const end = new Date(event.end_date_time);
+
+        if (distance <= checkInDistance && now >= start && now <= end) {
+          checkInAvailable = true;
         }
-  
-        return {
-          ...event,
-          is_registered: registered,
-          check_in_available: checkInAvailable
-        };
-      });
-  
-      res.status(200).json({ events: enrichedEvents });
-  
-    } catch (error) {
-      console.error('Error fetching upcoming events:', error);
-      res.status(500).json({ message: 'Server error' });
-    }
-  };
+      }
+
+      return {
+        ...event,
+        is_registered: registered,
+        check_in_available: checkInAvailable
+      };
+    });
+
+    res.status(200).json({ events: enrichedEvents });
+
+  } catch (error) {
+    console.error('Error fetching upcoming events:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
 
 
   exports.registerForEvent = async (req, res) => {
