@@ -13,7 +13,7 @@ exports.getAllUpcomingEvents = async (req, res) => {
     const { latitude, longitude } = req.body;
 
     const settingResult = await pool.query(`SELECT check_in_distance FROM settings LIMIT 1`);
-    const checkInDistance = settingResult.rows[0]?.check_in_distance || 100; // fallback: 100 meters
+    const checkInDistance = settingResult.rows[0]?.check_in_distance || 100;
 
     const eventsQuery = `
       SELECT 
@@ -21,7 +21,12 @@ exports.getAllUpcomingEvents = async (req, res) => {
         EXISTS (
           SELECT 1 FROM eventregistrations ea 
           WHERE ea.event_id = e.id AND ea.user_id = $1
-        ) AS is_registered
+        ) AS is_registered,
+        (
+          SELECT check_in_time FROM eventattendees att
+          WHERE att.event_id = e.id AND att.user_id = $1
+          LIMIT 1
+        ) AS check_in_time
       FROM events e
       WHERE e.end_date_time > NOW()
       ORDER BY e.start_date_time ASC
@@ -32,6 +37,7 @@ exports.getAllUpcomingEvents = async (req, res) => {
 
     const enrichedEvents = events.map(event => {
       const registered = event.is_registered;
+      const alreadyCheckedIn = !!event.check_in_time;
       let checkInAvailable = false;
 
       if (
@@ -52,10 +58,18 @@ exports.getAllUpcomingEvents = async (req, res) => {
         }
       }
 
+      let base64Banner = null;
+      if (event.banner && Buffer.isBuffer(event.banner)) {
+        const mimeType = "image/png"; // Change to "image/jpeg" if needed
+        base64Banner = `data:${mimeType};base64,${event.banner.toString('base64')}`;
+      }
+
       return {
         ...event,
         is_registered: registered,
-        check_in_available: checkInAvailable
+        check_in_available: checkInAvailable,
+        already_checked_in: alreadyCheckedIn,
+        banner: base64Banner  // ⬅️ replace buffer with base64 version
       };
     });
 
@@ -66,6 +80,8 @@ exports.getAllUpcomingEvents = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+
 
 
   exports.registerForEvent = async (req, res) => {
@@ -142,16 +158,24 @@ exports.checkInToEvent = async (req, res) => {
   exports.getRegisteredEventsWithConnections = async (req, res) => {
     try {
       const userId = req.user.id;
+      const { latitude, longitude } = req.body;
+  
+      const settingResult = await pool.query(`SELECT check_in_distance FROM settings LIMIT 1`);
+      const checkInDistance = settingResult.rows[0]?.check_in_distance || 100;
   
       const eventsQuery = `
-        SELECT 
+        SELECT DISTINCT ON (e.id)
           e.*,
-          TRUE as is_registered
+          TRUE AS is_registered,
+          ea.check_in_time
         FROM events e
-        INNER JOIN eventregistrations er ON er.event_id = e.id
-        WHERE er.user_id = $1
-        ORDER BY e.start_date_time ASC
+        INNER JOIN eventregistrations er 
+          ON er.event_id = e.id AND er.user_id = $1
+        LEFT JOIN eventattendees ea 
+          ON ea.event_id = e.id AND ea.user_id = $1
+        ORDER BY e.id, e.start_date_time
       `;
+  
       const result = await pool.query(eventsQuery, [userId]);
       const events = result.rows;
   
@@ -159,23 +183,53 @@ exports.checkInToEvent = async (req, res) => {
         const eventId = event.id;
   
         const connectionsQuery = `
-            SELECT 
-              COUNT(*) FILTER (WHERE uc.status = 'approved') AS approved,
-              COUNT(*) FILTER (WHERE uc.status = 'pending') AS pending,
-              COUNT(*) AS total
-            FROM userconnections uc
-            INNER JOIN eventattendees ea 
-              ON uc.user2_id = ea.user_id
-            WHERE uc.user1_id = $2
-              AND ea.event_id = $1
-          `;
-  
+          SELECT 
+            COUNT(*) FILTER (WHERE uc.status = 'approved') AS approved,
+            COUNT(*) FILTER (WHERE uc.status = 'pending') AS pending,
+            COUNT(*) AS total
+          FROM userconnections uc
+          JOIN eventattendees ea1 ON (
+            (uc.user1_id = ea1.user_id OR uc.user2_id = ea1.user_id)
+            AND ea1.user_id != $2
+          )
+          JOIN eventattendees ea2 ON ea2.user_id = $2
+          WHERE 
+            (uc.user1_id = $2 OR uc.user2_id = $2)
+            AND ea1.event_id = $1
+            AND ea2.event_id = $1
+        `;
         const connResult = await pool.query(connectionsQuery, [eventId, userId]);
         const { approved, pending, total } = connResult.rows[0];
   
+        // Check check-in availability
+        let checkInAvailable = false;
+        const now = new Date();
+        const start = new Date(event.start_date_time);
+        const end = new Date(event.end_date_time);
+  
+        if (
+          latitude != null && longitude != null &&
+          event.event_lat != null && event.event_long != null
+        ) {
+          const distance = haversineDistance(latitude, longitude, event.event_lat, event.event_long);
+          if (distance <= checkInDistance && now >= start && now <= end) {
+            checkInAvailable = true;
+          }
+        }
+  
+        // Convert banner to base64
+        let base64Banner = null;
+        if (event.banner && Buffer.isBuffer(event.banner)) {
+          const mimeType = "image/png"; // adjust based on your banner file type
+          base64Banner = `data:${mimeType};base64,${event.banner.toString('base64')}`;
+        }
+  
         return {
           ...event,
+          banner: base64Banner, // base64 version instead of buffer
           is_registered: true,
+          already_checked_in: !!event.check_in_time,
+          check_in_available: checkInAvailable,
           total_connections: parseInt(total, 10),
           approved_requests: parseInt(approved, 10),
           pending_requests: parseInt(pending, 10),
@@ -189,6 +243,11 @@ exports.checkInToEvent = async (req, res) => {
       res.status(500).json({ message: 'Server error' });
     }
   };
+  
+  
+  
+  
+  
   
 
   exports.getUsersFromSharedPastEvents = async (req, res) => {

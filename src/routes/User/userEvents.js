@@ -7,7 +7,7 @@ const userAuth = require('../../middleware/userAuth');
 router.post('/upcoming-events', userAuth, userEventController.getAllUpcomingEvents);
 router.post('/register-event', userAuth, userEventController.registerForEvent);
 router.post('/check-in', userAuth, userEventController.checkInToEvent);
-router.get('/registered-events', userAuth, userEventController.getRegisteredEventsWithConnections);
+router.post('/registered-events', userAuth, userEventController.getRegisteredEventsWithConnections);
 router.get('/attended-users', userAuth, userEventController.getUsersFromSharedPastEvents);
 
 // router.get('/attended-events', userAuth, userEventController.getAttendedEvents);

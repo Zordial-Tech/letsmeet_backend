@@ -7,7 +7,7 @@ exports.createUser = async (req, res) => {
     try {
         const { first_name, middle_name, last_name, username, email, password, role_id, attendees_role, photo, linkedin_url } = req.body;
 
-        console.log("🔹 Incoming Request:", req.body);
+        console.log("Incoming Request:", req.body);
 
         if (!first_name || !last_name || !email || !password || !role_id || !attendees_role || !linkedin_url) {
             console.log("Missing fields!");
