@@ -14,7 +14,6 @@ exports.createUser = async (req, res) => {
             return res.status(400).json({ error: "Missing required fields" });
         }
 
-        // Check if role exists
         const roleCheck = await pool.query("SELECT id FROM UserRoles WHERE id = $1", [role_id]);
         if (roleCheck.rows.length === 0) {
             console.log("Invalid role_id:", role_id);
@@ -57,19 +56,16 @@ exports.getUserById = async (req, res) => {
     }
 };
 
-// Update user
 exports.updateUser = async (req, res) => {
     try {
         const { id } = req.params;
         let { first_name, middle_name, last_name, username, email, password, role_id, attendees_role, photo, linkedin_url } = req.body;
 
-        // Normalize empty strings
         if (linkedin_url === "") linkedin_url = null;
         if (photo === "") photo = null;
         if (username === "") username = null;
         if (middle_name === "") middle_name = null;
 
-        // Step 1: Check if the linkedin_url is used by another user (case-insensitive)
         if (linkedin_url) {
             const linkedinCheck = await pool.query(
                 `SELECT id FROM Users WHERE LOWER(linkedin_url) = LOWER($1) AND id != $2`,
@@ -81,13 +77,11 @@ exports.updateUser = async (req, res) => {
             }
         }
 
-        // Step 2: Encrypt password if provided
         let encryptedPassword = null;
         if (password) {
             encryptedPassword = encryptPassword(password);
         }
 
-        // Step 3: Update user
         const result = await pool.query(
             `UPDATE Users 
              SET first_name = $1, middle_name = $2, last_name = $3, username = $4, email = $5, 
@@ -128,11 +122,9 @@ exports.updateUser = async (req, res) => {
 };
 
 
-// Delete user
 exports.deleteUser = async (req, res) => {
     const { id } = req.params;
 
-    // Optional: Validate ID
     if (!id || isNaN(parseInt(id))) {
         return res.status(400).json({ error: "Invalid user ID" });
     }
@@ -140,7 +132,6 @@ exports.deleteUser = async (req, res) => {
     try {
         await pool.query('BEGIN');
 
-        // Delete related entries
         await pool.query(`DELETE FROM public.eventattendees WHERE user_id = $1`, [id]);
         await pool.query(`DELETE FROM eventregistrations WHERE user_id = $1`, [id]);
         await pool.query(`DELETE FROM reports WHERE reported_by = $1 OR reported_user = $1`, [id]);
@@ -148,7 +139,6 @@ exports.deleteUser = async (req, res) => {
         await pool.query(`DELETE FROM qrcodes WHERE user_id = $1`, [id]);
         await pool.query(`DELETE FROM adminlogs WHERE admin_id = $1`, [id]);
 
-        // Delete user
         const result = await pool.query(`DELETE FROM users WHERE id = $1 RETURNING *`, [id]);
 
         await pool.query('COMMIT');
@@ -174,7 +164,7 @@ exports.getAllUsers = async (req, res) => {
 
         const users = result.rows.map(user => ({
             ...user,
-            password_hash: decryptPassword(user.password_hash) // Decrypt passwords
+            password_hash: decryptPassword(user.password_hash) 
         }));
 
         res.json(users);
@@ -188,10 +178,8 @@ exports.getUserCount = async (req, res) => {
     try {
         let { year } = req.query;
 
-        // Get the current year
         const currentYear = new Date().getFullYear();
 
-        // Convert "current" and "previous" to actual numbers
         if (year === "current") {
             year = currentYear;
         } else if (year === "previous") {
@@ -200,7 +188,6 @@ exports.getUserCount = async (req, res) => {
             return res.status(400).json({ error: "Invalid year parameter. Use 'current' or 'previous'." });
         }
 
-        //Query to get user count per month
         const result = await pool.query(
             `SELECT 
                 CAST(EXTRACT(MONTH FROM created_at) AS INTEGER) AS month,
@@ -211,27 +198,22 @@ exports.getUserCount = async (req, res) => {
              ORDER BY month`,
             [year]
         );
-
-        // Create a default array for all 12 months, setting users to 0 initially
         let userCounts = Array.from({ length: 12 }, (_, i) => ({
             month: i + 1,
             total_users: 0
         }));
 
-        // Fill in the actual user data where available
         result.rows.forEach(row => {
             userCounts[row.month - 1].total_users = parseInt(row.total_users, 10);
         });
 
         console.log("User count per month:", userCounts);
 
-        // Return structured response
         res.json({ year, data: userCounts });
 
     } catch (error) {
         console.error("Database error:", error);
 
-        // Handle PostgreSQL errors
         if (error.code === '22P02') {
             return res.status(400).json({ error: "Invalid data type in query parameters." });
         }
@@ -274,7 +256,6 @@ exports.getUserConnectionsInAttendedEvents = async (req, res) => {
     try {
         const { userId } = req.params;
 
-        // Query to get all attended events and their total connections
         const result = await pool.query(
             `SELECT ea.event_id, 
                     COUNT(uc.id) AS total_connections
@@ -371,20 +352,17 @@ exports.getAllUsersblcokedStatus = async (req, res) => {
 exports.setUserBlockStatus = async (req, res) => {
     try {
         const { id } = req.body;
-        const { block_status } = req.body; // Expecting 'blocked' or 'unblocked'
+        const { block_status } = req.body; 
 
-        // Validate input
         if (!["blocked", "unblocked"].includes(block_status)) {
             return res.status(400).json({ error: "Invalid status. Use 'blocked' or 'unblocked'." });
         }
 
-        // Check if user exists
         const userCheck = await pool.query(`SELECT id FROM users WHERE id = $1;`, [id]);
         if (userCheck.rows.length === 0) {
             return res.status(404).json({ error: "User not found." });
         }
 
-        // Update block status
         await pool.query(`UPDATE users SET block_status = $1 WHERE id = $2;`, [block_status, id]);
 
         res.json({ message: `User ${id} is now ${block_status}.`, new_status: block_status });
@@ -399,13 +377,11 @@ exports.getAttendedEventsByUser = async (req, res) => {
   const { userId } = req.params;
 
   try {
-    // Validate user
     const userCheck = await pool.query('SELECT id FROM users WHERE id = $1', [userId]);
     if (userCheck.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Fetch events attended by the user using eventattendees table
     const events = await pool.query(
       `SELECT 
          e.id, 
@@ -432,7 +408,6 @@ exports.getAttendedEventsByUser = async (req, res) => {
 };
 
 
-// userController.js
 
 exports.deleteUsers = async (req, res) => {
     const client = await pool.connect();
@@ -443,10 +418,8 @@ exports.deleteUsers = async (req, res) => {
         return res.status(400).json({ error: "Please provide an array of user IDs to delete." });
       }
   
-      // Begin transaction
       await client.query('BEGIN');
   
-      // Delete from dependent tables - note explicit schema public.*
       await client.query(`DELETE FROM public.eventattendees WHERE user_id = ANY($1)`, [ids]);
       await client.query(`DELETE FROM public.eventregistrations WHERE user_id = ANY($1)`, [ids]);
     //   await client.query(`DELETE FROM public.aiconnections WHERE user_id = ANY($1) OR recommended_user_id = ANY($1)`, [ids]);
@@ -454,7 +427,6 @@ exports.deleteUsers = async (req, res) => {
       await client.query(`DELETE FROM public.userconnections WHERE user1_id = ANY($1) OR user2_id = ANY($1)`, [ids]);
       await client.query(`DELETE FROM public.adminlogs WHERE admin_id = ANY($1)`, [ids]);
   
-      // Delete users themselves
       const deleteResult = await client.query(`DELETE FROM public.users WHERE id = ANY($1) RETURNING id`, [ids]);
   
       await client.query('COMMIT');
@@ -501,7 +473,6 @@ exports.addAttendeeRole = async (req, res) => {
   }
 
   try {
-    // Step 1: Find the smallest missing ID
     const gapResult = await pool.query(`
       SELECT COALESCE(MIN(t1.id) + 1, 1) AS available_id
       FROM attendeesrolelist t1
@@ -512,13 +483,11 @@ exports.addAttendeeRole = async (req, res) => {
 
     let availableId = gapResult.rows[0].available_id;
 
-    // Step 2: Check if 1 is missing (edge case when table starts empty or 1 is deleted)
     const checkOne = await pool.query(`SELECT 1 FROM attendeesrolelist WHERE id = 1`);
     if (checkOne.rows.length === 0) {
       availableId = 1;
     }
 
-    // Step 3: Insert using the manually set ID
     const { rows } = await pool.query(
       `INSERT INTO attendeesrolelist (id, role_name) VALUES ($1, $2) RETURNING id AS role_id`,
       [availableId, role_name]

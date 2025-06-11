@@ -1,10 +1,10 @@
 const pool = require('../../config/dbconfig');
 const multer = require('multer');
-const upload = multer(); // Store files in memory
+const upload = multer(); 
 
 // Create a new event
 exports.createEvent = [
-    upload.single('banner'), // Handle 'banner' field as file
+    upload.single('banner'),
   
     async (req, res) => {
       try {
@@ -25,7 +25,7 @@ exports.createEvent = [
           return res.status(400).json({ error: "Missing required fields" });
         }
   
-        const bannerBuffer = req.file ? req.file.buffer : null; // Get binary data
+        const bannerBuffer = req.file ? req.file.buffer : null; 
   
         const result = await pool.query(
           `INSERT INTO events 
@@ -40,7 +40,7 @@ exports.createEvent = [
             longitude,
             venue,
             web_page_url,
-            bannerBuffer, // binary buffer goes into BYTEA column
+            bannerBuffer, 
             priority,
             status
           ]
@@ -63,7 +63,7 @@ exports.getAllEvents = async (req, res) => {
       const eventsWithBanner = result.rows.map(event => {
         let base64Banner = null;
         if (event.banner) {
-          const mimeType = "image/png"; // or "image/jpeg" if your banners are jpeg
+          const mimeType = "image/png";
           base64Banner = `data:${mimeType};base64,${event.banner.toString('base64')}`;
         }
   
@@ -123,7 +123,6 @@ exports.updateEvent = [
 
       const bannerBuffer = req.file ? req.file.buffer : null;
 
-      // Build dynamic SQL and parameters
       const fields = [
         "name = $1",
         "description = $2",
@@ -157,7 +156,7 @@ exports.updateEvent = [
       fields.push(`status = $${values.length + 1}`);
       values.push(status);
 
-      fields.push(`updated_at = NOW()`); // static, not a parameter
+      fields.push(`updated_at = NOW()`); r
 
       const updateQuery = `
         UPDATE events
@@ -210,7 +209,7 @@ exports.deleteEvent = async (req, res) => {
 exports.toggleEventRegistration = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status } = req.body; // Should be "enabled" or "disabled"
+        const { status } = req.body; 
 
         const result = await pool.query(
             `UPDATE events SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
@@ -272,26 +271,23 @@ exports.getEventAnalytics = async (req, res) => {
 
 exports.getEventCount = async (req, res) => {
     try {
-        console.log("API Called: /count with query:", req.query); // Log API call
+        console.log("API Called: /count with query:", req.query);
   
         let { year } = req.query;
   
-        // Get the current year
         const currentYear = new Date().getFullYear();
   
-        // Convert "current" and "previous" to actual numbers
         if (year === "current") {
             year = currentYear;
         } else if (year === "previous") {
             year = currentYear - 1;
         } else {
-            console.log("Invalid year parameter:", year); // Log error
+            console.log("Invalid year parameter:", year);
             return res.status(400).json({ error: "Invalid year parameter. Use 'current' or 'previous'." });
         }
   
-        console.log("Fetching data for year:", year); // Log the processed year
+        console.log("Fetching data for year:", year);
   
-        // Query to get event count per month
         const result = await pool.query(
             `SELECT 
                 CAST(EXTRACT(MONTH FROM created_at) AS INTEGER) AS month, 
@@ -303,28 +299,24 @@ exports.getEventCount = async (req, res) => {
             [year]
         );
   
-        console.log("Query Result:", result.rows); // Log database result
+        console.log("Query Result:", result.rows); 
   
-        // Create a default array for all 12 months with 0 events initially
         let eventCounts = Array.from({ length: 12 }, (_, i) => ({
             month: i + 1,
             total_events: 0
         }));
   
-        // Fill in the actual event data where available
         result.rows.forEach(row => {
             eventCounts[row.month - 1].total_events = parseInt(row.total_events, 10);
         });
   
-        console.log("Final Event Count Data:", eventCounts); // Log final data
+        console.log("Final Event Count Data:", eventCounts);
   
-        // Return structured response
         res.json({ year, data: eventCounts });
   
     } catch (error) {
-        console.error("Database error:", error); // Log full error
+        console.error("Database error:", error);
   
-        // Handle PostgreSQL errors
         if (error.code === '22P02') {
             return res.status(400).json({ error: "Invalid data type in query parameters." });
         }
@@ -378,12 +370,10 @@ exports.deleteMassEvents = async (req, res) => {
 
         await client.query('BEGIN');
 
-        // Delete from dependent tables first
         await client.query('DELETE FROM eventattendees WHERE event_id = ANY($1)', [ids]);
         await client.query('DELETE FROM eventregistrations WHERE event_id = ANY($1)', [ids]);
         await client.query('DELETE FROM qrcodes WHERE event_id = ANY($1)', [ids]);
 
-        // Then delete the actual events
         const result = await client.query('DELETE FROM events WHERE id = ANY($1) RETURNING *', [ids]);
 
         await client.query('COMMIT');
@@ -406,8 +396,6 @@ exports.deleteMassEvents = async (req, res) => {
     }
 };
 
-// GET events by time range (this_month, last_month, last_year)
-// GET events by time range via route param
 exports.getEventsByTimeRange = async (req, res) => {
     const timeRange = req.params.time_range;
 

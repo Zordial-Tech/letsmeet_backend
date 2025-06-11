@@ -136,22 +136,24 @@
     {
     "events": [
         {
-            "id": 85,
-            "name": "AR/VR Experience Days",
-            "description": "Hands-on event with the latest in AR and VR tech.",
-            "start_date_time": "2025-07-22T04:00:00.000Z",
-            "end_date_time": "2025-07-22T09:30:00.000Z",
-            "latitude": "52.52",
-            "longitude": "13.405",
-            "venue": "Berlin Expo Center",
-            "web_page_url": "http://example.com/events/arvr-days",
+            "id": 82,
+            "name": "Green Tech Fair",
+            "description": "Showcasing sustainable and green technologies.",
+            "start_date_time": "2025-11-02T03:15:00.000Z",
+            "end_date_time": "2025-11-02T08:30:00.000Z",
+            "latitude": "48.8566",
+            "longitude": "2.3522",
+            "venue": "Paris Expo Center",
+            "web_page_url": "http://example.com/events/greentech",
             "banner": null,
             "status": "disable",
             "priority": null,
-            "created_at": "2025-06-02T18:12:59.090Z",
-            "updated_at": "2025-06-02T18:13:44.530Z",
+            "created_at": "2025-06-02T18:12:37.938Z",
+            "updated_at": "2025-06-05T04:14:56.663Z",
             "is_registered": false,
-            "check_in_available": false
+            "check_in_time": null,
+            "check_in_available": false,
+            "already_checked_in": false
         }
         ]
     }
@@ -203,23 +205,26 @@
     {
     "events": [
     {
-            "id": 78,
-            "name": "Tech Innovators Summit",
-            "description": "A summit showcasing the latest in tech innovation.",
-            "start_date_time": "2025-04-10T03:30:00.000Z",
-            "end_date_time": "2025-07-10T11:30:00.000Z",
-            "latitude": "40.7128",
-            "longitude": "-74.006",
-            "venue": "Innovation Hall, NYC",
-            "web_page_url": "http://example.com/events/innovators-summit",
+            "id": 85,
+            "name": "AR/VR Experience Days",
+            "description": "Hands-on event with the latest in AR and VR tech.",
+            "start_date_time": "2025-06-08T02:00:00.000Z",
+            "end_date_time": "2025-07-22T09:30:00.000Z",
+            "latitude": "52.52",
+            "longitude": "13.405",
+            "venue": "Berlin Expo Center",
+            "web_page_url": "http://example.com/events/arvr-days",
             "banner": null,
-            "status": "enable",
+            "status": "disable",
             "priority": null,
-            "created_at": "2025-06-02T18:12:10.462Z",
-            "updated_at": "2025-06-02T18:12:10.462Z",
+            "created_at": "2025-06-02T18:12:59.090Z",
+            "updated_at": "2025-06-02T18:13:44.530Z",
             "is_registered": true,
-            "total_connections": 2,
-            "approved_requests": 2,
+            "check_in_time": null,
+            "already_checked_in": false,
+            "check_in_available": false,
+            "total_connections": 0,
+            "approved_requests": 0,
             "pending_requests": 0
         }
         ]
@@ -296,15 +301,15 @@
   - Success (200):
     ```json
     {
-      "pending_requests": [
+       "pending_requests": [
         {
-          "request_id": "integer",
-          "user_id": "integer",
-          "first_name": "string",
-          "last_name": "string",
-          "attendees_role": "string",
-          "photo": "string (base64 encoded image)",
-          "created_at": "timestamp"
+            "id": 131,
+            "first_name": "Sophie",
+            "last_name": "Lee",
+            "email": "sophie.lee@example.com",
+            "photo": "aHR0cHM6Ly9leGFtcGxlLmNvbS9zb3BoaWVfbGVlLmpwZw==",
+            "linkedin_url": "https://linkedin.com/in/sophielee",
+            "role": "Developer"
         }
       ]
     }

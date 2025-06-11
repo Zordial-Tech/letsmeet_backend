@@ -96,7 +96,6 @@ exports.sendConnectionRequest = async (req, res) => {
           u.attendees_role AS role
         FROM userconnections uc
         INNER JOIN users u ON u.id = uc.user1_id
-        LEFT JOIN eventattendees ea ON ea.user_id = u.id
         WHERE uc.user2_id = $1
           AND uc.status = 'pending'
       `;
