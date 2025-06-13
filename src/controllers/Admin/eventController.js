@@ -156,7 +156,7 @@ exports.updateEvent = [
       fields.push(`status = $${values.length + 1}`);
       values.push(status);
 
-      fields.push(`updated_at = NOW()`); r
+      fields.push(`updated_at = NOW()`); 
 
       const updateQuery = `
         UPDATE events
